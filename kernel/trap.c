@@ -65,6 +65,12 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 15){
+    //obsluha cow fork
+    if(uvmcow(p->pagetable, r_stval())){
+      printf("cow fork failed\n");
+      setkilled(p);
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
