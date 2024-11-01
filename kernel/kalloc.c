@@ -9,6 +9,7 @@
 #include "riscv.h"
 #include "defs.h"
 
+#define PG_INDEX(pa) (((uint64)(pa) - (uint64)kmem.refcount) / PGSIZE)
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
@@ -20,7 +21,8 @@ struct run {
 
 struct {
   struct spinlock lock;
-  struct run *freelist;
+  struct run *freelist; 
+  uint *refcount;
 } kmem;
 
 void
@@ -35,6 +37,20 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
+  kmem.refcount = (uint *)p;
+  // celkovy pocet stranok spracovavabycg alokatorom
+  uint64 pages = ((uint64) pa_end - (uint64) kmem.refcount) / PGSIZE;
+  // pocet stranok potrebnych pre refcount
+  uint64 refcount_pages = PGROUNDUP(pages * sizeof(uint)) / PGSIZE;
+  // uint64 refcount_pages = PGROUNDUP(pages * sizeof(*kmem.refcount)) / PGSIZE;
+  // TODO: inicializovat pole referencii
+  for(uint64 i = 0; i < refcount_pages; i++){
+    kmem.refcount[i] = 2;
+  }
+  for(uint64 i = refcount_pages; i < pages; i++){
+    kmem.refcount[i] = 1;
+  }
+
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
 }
@@ -50,6 +66,15 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  acquire(&kmem.lock);
+  kmem.refcount[PG_INDEX(pa)]--;
+  if(kmem.refcount[PG_INDEX(pa)]){
+    release(&kmem.lock);
+    return;
+  }
+  release(&kmem.lock);
+
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -72,11 +97,22 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
+    // nastav pocet referencii pre r na 1
+    kmem.refcount[PG_INDEX(r)] = 1;
     kmem.freelist = r->next;
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+void
+get_page(uint64 pa)
+{
+  acquire(&kmem.lock);
+  kmem.refcount[PG_INDEX(pa)]++;
+  release(&kmem.lock);
 }

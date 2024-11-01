@@ -191,10 +191,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     // DOCASNE ZAKOMENTOVANE pre COW, odstranit
-    // if(do_free){
-    //   uint64 pa = PTE2PA(*pte);
-    //   kfree((void*)pa);
-    // }
+    if(do_free){
+      uint64 pa = PTE2PA(*pte);
+      kfree((void*)pa);
+    }
     *pte = 0;
   }
 }
@@ -338,6 +338,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+    get_page(pa);
   }
   return 0;
 
@@ -367,6 +368,7 @@ int uvmcow(pagetable_t pagetable, uint64 fault_va){
   pa = PTE2PA(*pte);
   // skopiruj povodnu stranku do mem
   memmove(mem, (char*)pa, PGSIZE);
+  
   // flags = priznaky z pte s PTE_W bez PTE_COW
   // flags = PTE_FLAGS( (*pte & ~PTE_COW) | PTE_W);
   flags = PTE_FLAGS(*pte);
@@ -377,6 +379,8 @@ int uvmcow(pagetable_t pagetable, uint64 fault_va){
     kfree(mem);
     return -1;
   }
+
+  kfree((void *)pa);
   return 0;
 }
 
@@ -407,6 +411,11 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
+
+    // todo: zmenit tento if
+    // if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
+    //    (*pte & PTE_W) == 0)
+    
     if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
        (*pte & PTE_W) == 0)
       return -1;
