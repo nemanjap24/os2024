@@ -412,13 +412,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       return -1;
     pte = walk(pagetable, va0, 0);
 
-    // todo: zmenit tento if
-    // if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-    //    (*pte & PTE_W) == 0)
-    
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
       return -1;
+
+    if(uvmcow(pagetable, va0) == -1 && (*pte & PTE_W) == 0)
+      return -1;
+  
     pa0 = PTE2PA(*pte);
     n = PGSIZE - (dstva - va0);
     if(n > len)
