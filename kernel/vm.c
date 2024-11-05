@@ -486,11 +486,29 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   }
 }
 
+void vmprint_level(pagetable_t pagetable, int level)
+{
+  if(level == 0)
+    printf("page table %p\n", pagetable);
+  for(int i = 0; i < 512; i++){
+    if((pagetable[i] & PTE_V) == 0)
+      continue;
+    for(int j = 0; j < level; j++)
+      printf(".. ");
+    
+    printf("..%d: pte %p pa %p\n", i, (void *)pagetable[i], (void *) PTE2PA(pagetable[i]));
+    // this PTE2PA points to a lower-level page table
+    if((pagetable[i] & (PTE_X | PTE_W | PTE_R)) == 0){
+      vmprint_level((pagetable_t) PTE2PA(pagetable[i]), level + 1);
+    }
+  }
+}
+
 
 #ifdef LAB_PGTBL
 void
 vmprint(pagetable_t pagetable) {
-  // your code here
+  vmprint_level(pagetable, 0);
 }
 #endif
 
